@@ -94,6 +94,13 @@ struct BaseCacheParams;
  */
 class BaseCache : public ClockedObject
 {
+  /* Start EL: Add support for Predictor */
+  public:
+    
+    int GCP = 0; //Global Compression Predictor
+    bool ACC_Prediction = true; //Boolean to determine whether compression should be used or not
+  /* END EL */
+
   protected:
     /**
      * Indexes to enumerate the MSHR queues.
@@ -1358,6 +1365,7 @@ class BaseCache : public ClockedObject
      */
     void serialize(CheckpointOut &cp) const override;
     void unserialize(CheckpointIn &cp) override;
+
 };
 
 /**

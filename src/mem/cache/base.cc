@@ -976,6 +976,8 @@ bool
 BaseCache::updateCompressionData(CacheBlk *&blk, const uint64_t* data,
                                  PacketList &writebacks)
 {
+    std::size_t compression_size;
+    
     // tempBlock does not exist in the tags, so don't do anything for it.
     if (blk == tempBlock) {
         return true;
@@ -984,15 +986,47 @@ BaseCache::updateCompressionData(CacheBlk *&blk, const uint64_t* data,
     // The compressor is called to compress the updated data, so that its
     // metadata can be updated.
     Cycles compression_lat = Cycles(0);
-    Cycles decompression_lat = Cycles(0);
-    const auto comp_data =
-        compressor->compress(data, compression_lat, decompression_lat);
-    std::size_t compression_size = comp_data->getSizeBits();
+    Cycles decompression_lat = Cycles(0); //TODO: Set to 5 cycles in paper
+
+    /* Start EL: Add support for Adaptive Cache Compression GCP Prediction */
+    
+    // Update the Global Compression Predictor to determine whether we are helping or hurting
+//    if( cache_hit && line_is_compressed && (cache_line_num < (UNCOMPRESSED_ENTRIES_PER_SET) )){ //UNCOMPRESSED_ENTRIES = 4 in paper
+//        //'Penalized Hit', line is compressed when it didn't need to be
+//        //Subtract Normalized Decompression penalty in cycles (5 cycles in paper, normalized to 1)
+//	GCP = GCP - N_DECOMPRESSION_PENALTY; 
+//
+//   }else if(!hit && (SUM(Compressed Sizes) < NUM_DATA_SEGMENTS_PER_SET)){
+//
+//        //'Avoidable Miss', where line would have hit if above lines in cache has been compressed
+//        GCP = GCP + N_L2_MISS_PENALTY;
+//
+//   }else if(!hit && (cache_line_num >= UNCOMPRESSED_ENTRIES_PER_SET) ){
+//
+//        //'Avoided Miss', where line was a hit only because above lines in cache are compressed
+//        GCP = GCP + N_L2_MISS_PENALTY;
+//    }
+//
+//    if(GCP >= 0){
+//        ACC_Prediction = true;
+//    }
+//    else{
+//        ACC_Prediction = false;
+//    }
+
+    // If ACC is determined to be helping us, compress the next line */
+    if(ACC_Prediction){
+        const auto comp_data = compressor->compress(data, compression_lat, decompression_lat);
+        compression_size = comp_data->getSizeBits();
+    }
+    /* End EL */
 
     // Get previous compressed size
     CompressionBlk* compression_blk = static_cast<CompressionBlk*>(blk);
     [[maybe_unused]] const std::size_t prev_size =
         compression_blk->getSizeBits();
+
+    
 
     // If compressed size didn't change enough to modify its co-allocatability
     // there is nothing to do. Otherwise we may be facing a data expansion
@@ -1615,14 +1649,14 @@ BaseCache::allocateBlock(const PacketPtr pkt, PacketList &writebacks)
     // is fully sized
     std::size_t blk_size_bits = blkSize*8;
     Cycles compression_lat = Cycles(0);
-    Cycles decompression_lat = Cycles(0);
+    Cycles decompression_lat = Cycles(0); //TODO: Set to 5 cycles in paper
 
     // If a compressor is being used, it is called to compress data before
     // insertion. Although in Gem5 the data is stored uncompressed, even if a
     // compressor is used, the compression/decompression methods are called to
     // calculate the amount of extra cycles needed to read or write compressed
     // blocks.
-    if (compressor && pkt->hasData()) {
+    if (ACC_Prediction && compressor && pkt->hasData()) {
         const auto comp_data = compressor->compress(
             pkt->getConstPtr<uint64_t>(), compression_lat, decompression_lat);
         blk_size_bits = comp_data->getSizeBits();
